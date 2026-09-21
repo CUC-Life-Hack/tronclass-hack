@@ -1,22 +1,25 @@
 {
-	"name": "@cuclh/rainclass-hack",
-	"version": "1.0.0",
-	"main": "main.js",
+	"name": "@cuclh/tronclass-hack",
+	"version": "1.6.1",
+	"description": "中国传媒大学畅课 (TronClass) 视频助手 userscript：倍速播放 + 一键完成",
+	"main": "src/main.js",
 	"type": "module",
 	"license": "GPL-3.0-or-later",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/CUC-Life-Hack/tronclass-hack.git"
+	},
 	"scripts": {
-		"build": "npx webpack"
+		"build": "NODE_ENV=production webpack --mode production",
+		"dev": "webpack --mode development --watch",
+		"clean": "rm -rf dist dev node_modules"
 	},
 	"devDependencies": {
-		"clean-webpack-plugin": "^4.0.0",
-		"css-loader": "^6.7.1",
+		"css-loader": "^7.1.2",
 		"lodash": "^4.17.21",
-		"style-loader": "^3.3.1",
-		"webpack": "^5.73.0",
-		"webpack-cli": "^4.9.2",
-		"webpack-userscript": "^2.5.8"
-	},
-	"dependencies": {
-		"@cuclh/userscript-base": "git+https://github.com/CUC-Life-Hack/userscript-base.git"
+		"style-loader": "^4.0.0",
+		"webpack": "^5.95.0",
+		"webpack-cli": "^5.1.4",
+		"webpack-userscript": "^3.2.3"
 	}
 }
