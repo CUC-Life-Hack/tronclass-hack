@@ -32,7 +32,7 @@ export default {
 		new WebpackUserscript({
 			headers: {
 				name: '畅课 Hack',
-				version: '1.6.1',
+				version: '1.7.1',
 				grant: ['unsafeWindow'],
 				// Match the whole site: TronClass is an SPA and switches to the
 				// full-screen video route via the hash without reloading, so the
