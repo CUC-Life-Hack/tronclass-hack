@@ -27,9 +27,11 @@ _.assign(Hack, {
 	Route() {
 		if(VIDEO_ROUTE.test(location.href))
 			return true;
-		// Fallback: any learning-activity hash route, or a page where a media
-		// element is already present.
+		// Fallback: any learning-activity hash route, a course page, or a page
+		// where a media element is already present.
 		if(/\/learning-activity[^#]*#\/\d+/.test(location.href))
+			return true;
+		if(/\/course\/\d+(\/|$|\?|#)/.test(location.href))
 			return true;
 		return document.querySelector('video') != null;
 	},
@@ -73,15 +75,13 @@ _.assign(Hack, {
 		);
 
 		// Current site bundles its player, so `window.videojs` no longer exists.
-		// Operate on the underlying <video> element instead.
+		// Operate on the underlying <video> element instead. It is optional: on a
+		// course page there is no player, but "全部完成" still works.
 		const video = this.FindVideo();
-		if(!video)
-			throw new Error('未找到 <video> 元素');
-
 		this.video = video;
 		this.$player = video;
-
-		this.InstallPlayerPatches();
+		if(video)
+			this.InstallPlayerPatches();
 		this.WatchForPlayerReplacement();
 		this.InstallNetworkSniffer();
 
@@ -455,6 +455,71 @@ _.assign(Hack, {
 		return lines.join('\n');
 	},
 
+	// Video duration (seconds) from the activity's upload metadata.
+	ActivityDuration(activity) {
+		const upload = activity?.uploads?.[0];
+		const meta = upload?.videos?.[0];
+		const duration = meta?.duration ?? upload?.videoDuration;
+		return Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 0;
+	},
+
+	// Complete every video activity in the current course, one after another.
+	async CompleteAllVideos() {
+		return await this.CompleteActivities(this.videos);
+	},
+
+	// Complete a specific set of activities (ids) or activity objects.
+	async CompleteActivities(input) {
+		const list = (input || [])
+			.map(item => (typeof item === 'object' ? item : this.FindActivity(item)))
+			.filter(activity => activity && this.ActivityDuration(activity) > 0);
+
+		if(!list.length)
+			return '未选择任何带时长的视频活动';
+
+		const MAX_CHUNK = 120;
+		const total = list.length;
+		let ok = 0;
+		let fail = 0;
+		const failures = [];
+
+		for(let i = 0; i < list.length; i++) {
+			const activity = list[i];
+			const duration = this.ActivityDuration(activity);
+			this.SetStatus(`上报中：${i + 1}/${total}（活动 ${activity.id}，${duration}s）…`);
+
+			let activityOk = true;
+			for(let start = 0; start < duration; start += MAX_CHUNK) {
+				const end = Math.min(start + MAX_CHUNK, duration);
+				try {
+					const resp = await this.PostActivityRead(activity.id, start, end);
+					if(String(resp).includes('failed'))
+						activityOk = false;
+				} catch(err) {
+					activityOk = false;
+				}
+				await Delay(300);
+			}
+
+			if(activityOk)
+				ok++;
+			else {
+				fail++;
+				failures.push(activity.id);
+			}
+		}
+
+		const summary = `完成：成功 ${ok} / 失败 ${fail} / 共 ${total}`
+			+ (failures.length ? `\n失败活动：${failures.join(', ')}` : '');
+		this.SetStatus(summary);
+		return summary;
+	},
+
+	SetStatus(text) {
+		if(typeof this.__setStatus === 'function')
+			this.__setStatus(text);
+	},
+
 	// Build the panel body shown after a successful init.
 	BuildPanel(hack) {
 		const wrap = document.createElement('div');
@@ -469,8 +534,13 @@ _.assign(Hack, {
 		};
 
 		line('课程', hack.course?.name ?? '未知');
-		line('视频数', hack.videos?.length ?? 0);
 		line('倍速', hack.currentRate ?? 10);
+
+		const status = document.createElement('p');
+		status.className = 'log hack-status';
+		status.textContent = '勾选要刷的视频，然后点「完成所选」';
+		const setStatus = text => { status.textContent = text; };
+		hack.__setStatus = setStatus;
 
 		const controls = document.createElement('div');
 		controls.className = 'hack-controls';
@@ -478,17 +548,68 @@ _.assign(Hack, {
 		const complete = document.createElement('button');
 		complete.textContent = '一键完成';
 		complete.onclick = async () => {
-			status.textContent = '上报中…';
-			status.textContent = await hack.CompleteCurrentVideo();
+			setStatus('上报中…');
+			setStatus(await hack.CompleteCurrentVideo());
 		};
 		controls.appendChild(complete);
 
-		wrap.appendChild(controls);
+		// Checkbox list of the course's video activities.
+		const list = (hack.videos || []).filter(activity => hack.ActivityDuration(activity) > 0);
+		const checks = [];
+		const listTitle = document.createElement('p');
+		listTitle.className = 'log';
+		listTitle.textContent = `—— 视频（已选 ${list.length} / ${list.length}）——`;
 
-		const status = document.createElement('p');
-		status.className = 'log hack-status';
-		status.textContent = '按 ≤120s 分段上报观看进度';
+		const listBox = document.createElement('div');
+		listBox.className = 'hack-list';
+		for(const activity of list) {
+			const row = document.createElement('label');
+			row.className = 'hack-item';
+			const box = document.createElement('input');
+			box.type = 'checkbox';
+			box.checked = true;
+			box.value = String(activity.id);
+			const text = document.createElement('span');
+			const title = activity.title || activity.name || `活动 ${activity.id}`;
+			text.textContent = `${title}（${hack.ActivityDuration(activity)}s）`;
+			row.appendChild(box);
+			row.appendChild(text);
+			listBox.appendChild(row);
+			checks.push(box);
+		}
+
+		const selectedIds = () => checks.filter(box => box.checked).map(box => Number(box.value));
+		const refreshTitle = () => {
+			listTitle.textContent = `—— 视频（已选 ${selectedIds().length} / ${list.length}）——`;
+		};
+		checks.forEach(box => box.addEventListener('change', refreshTitle));
+
+		const completeSelected = document.createElement('button');
+		completeSelected.textContent = '完成所选';
+		completeSelected.onclick = async () => {
+			const ids = selectedIds();
+			if(!ids.length) {
+				setStatus('未勾选任何视频');
+				return;
+			}
+			setStatus(`开始上报 ${ids.length} 个视频…`);
+			await hack.CompleteActivities(ids);
+		};
+		controls.appendChild(completeSelected);
+
+		const toggleAll = document.createElement('button');
+		toggleAll.textContent = '全选/取消';
+		toggleAll.onclick = () => {
+			const allChecked = checks.length > 0 && checks.every(box => box.checked);
+			checks.forEach(box => { box.checked = !allChecked; });
+			refreshTitle();
+		};
+		controls.appendChild(toggleAll);
+
+		wrap.appendChild(controls);
 		wrap.appendChild(status);
+		wrap.appendChild(listTitle);
+		wrap.appendChild(listBox);
 
 		// Network capture: shows the requests the site actually sends so the
 		// progress-report endpoint/payload can be identified.

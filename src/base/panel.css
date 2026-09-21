@@ -15,7 +15,7 @@
 	right: 0;
 	top: 0;
 	width: 400px;
-	height: 460px;
+	height: 560px;
 	border: 1px solid var(--border-color);
 	background-color: #ffffffcc;
 	box-shadow: 0px .25em .75em #00000044;
@@ -86,6 +86,34 @@
 	word-break: break-all;
 	font-family: ui-monospace, Menlo, monospace;
 	color: #06c;
+}
+
+#hack-panel .hack-list {
+	max-height: 150px;
+	overflow: auto;
+	border: 1px solid var(--border-color);
+	border-radius: .25em;
+	padding: .3em .4em;
+	background: #fafafa;
+}
+
+#hack-panel .hack-item {
+	display: flex;
+	align-items: flex-start;
+	gap: .35em;
+	font-size: .78em;
+	line-height: 1.35;
+	cursor: pointer;
+	padding: .1em 0;
+}
+
+#hack-panel .hack-item>input {
+	margin-top: .2em;
+	flex: none;
+}
+
+#hack-panel .hack-item>span {
+	word-break: break-all;
 }
 
 #hack-panel .hack-capture {	width: 100%;
